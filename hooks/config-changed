@@ -82,7 +82,7 @@ if configs['prefer-ipv6']:
 
 # There is preliminary code for mariadb, but switching
 # from mariadb -> mysql fails badly, so it is disabled for now.
-valid_flavors = ['distro','percona']
+valid_flavors = ['distro','percona', 'mysql-5.6']
 if configs['flavor'] not in valid_flavors:
     check_call(['juju-log','-l',
             'ERROR',
@@ -93,6 +93,9 @@ remove_pkgs=[]
 if configs['flavor'] == 'distro':
     apt_sources = []
     package = 'mysql-server'
+elif configs['flavor'] == 'mysql-5.6':
+    apt_sources = []
+    package = 'mysql-server-5.6'
 elif configs['flavor'] == 'percona':
     apt_sources = ['repo.percona.com/apt']
     package = 'percona-server-server'
@@ -228,7 +231,9 @@ unit_id = os.environ['JUJU_UNIT_NAME'].split('/')[1]
 
 if not i_am_a_slave and configs['tuning-level'] == 'fast':
     binlog_cnf = ''
+    who_am_i="master"
 else:
+    who_am_i="slave"
     # On slaves, this gets overwritten
     binlog_template = """
 [mysqld]
@@ -236,7 +241,6 @@ server_id = %s
 log_bin = /var/log/mysql/mysql-bin.log
 binlog_format = %s
 """
-
     binlog_cnf = binlog_template % (unit_id,
         configs.get('binlog-format','MIXED'))
 
@@ -283,6 +287,9 @@ for target,content in targets.iteritems():
 if need_restart:
     try:
         check_call(['service', 'mysql', 'restart'])
+        check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e FLUSH TABLES WITH READ LOCK"])
+        check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e SET GLOBAL read_only = %s" % configs["%s_read_only" % who_am_i]])
+        check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e UNLOCK TABLES"])
     except CalledProcessError:
         check_call(['juju-log', '-l', 'INFO', 'Restart failed, trying again'])
         check_call(['service', 'mysql', 'restart'])

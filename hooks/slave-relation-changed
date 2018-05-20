@@ -13,13 +13,16 @@ if [ "$JUJU_REMOTE_UNIT" != "$master" ] ; then
   exit 0;
 fi
 echo master=$master
+slave_read_only=$(config-get "slave_read_only")
+binlog_format=$(config-get "binlog-format")
+juju-log "Set read_only value to ${read_only}."
 
 for setting in user password hostname port dumpurl; do
     value=`relation-get $setting`
     if [ -z "$value" ] ; then
         echo "$setting is empty! Aborting"
         exit 0
-    fi        
+    fi
     echo $setting=$value
     eval $setting=$value
 done
@@ -61,10 +64,12 @@ basedir=/usr
 EOF
 
 if [ -z "$serverid" ] ; then
-  serverid=`echo $user | cut -d/ -f2`
+  serverid=`echo $JUJU_UNIT_NAME | cut -d/ -f2`
 fi
 # add 100000 to server_id to avoid conflicts w/ masters
-serverid=$(($serverid+100000))
+# @todo remove if using unit name works well
+# serverid=$(($serverid+100000))
+juju-log "Server id is ${serverid}."
 if [ -f /etc/mysql/conf.d/slave.cf ] ; then
     old_hash=`md5sum /etc/mysql/conf.d/slave.cf`
 else
@@ -74,6 +79,7 @@ cat > /etc/mysql/conf.d/binlog.cnf <<EOF
 [mysqld]
 server-id = $serverid
 log_bin = /var/log/mysql/mysql-bin.log
+binlog_format = ${binlog_format:-MIXED}
 EOF
 new_hash=`md5sum /etc/mysql/conf.d/binlog.cnf`
 if [ "$new_hash" != "$old_hash" ] ; then
@@ -84,6 +90,11 @@ if [ "$new_hash" != "$old_hash" ] ; then
   mv /var/log/mysql/mysql-bin* $backupdir || :
   service mysql start
 fi
+# @see https://bugs.mysql.com/bug.php?id=11733
+mysql $ROOTARGS -e "FLUSH TABLES WITH READ LOCK"
+mysql $ROOTARGS -e "SET GLOBAL read_only = ${slave_read_only:-OFF}"
+mysql $ROOTARGS -e "UNLOCK TABLES"
+
 mysql $ROOTARGS -e "START SLAVE"
 mysql $ROOTARGS -e "SHOW SLAVE STATUS"
 touch /var/lib/juju/i.am.a.slave
