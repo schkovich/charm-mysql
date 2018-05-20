@@ -20,7 +20,6 @@ from charmhelpers.fetch import (
 )
 from charmhelpers.core.host import mkdir, rsync
 from charmhelpers.core.templating import render
-from common import get_db_helper
 
 hookenv.status_set('maintenance', 'Configuring MySQL')
 
@@ -48,7 +47,6 @@ def human_to_bytes(human):
         pctram = total_ram * factor
         return int(pctram - (pctram % PAGE_SIZE))
     raise ValueError("Can only convert K,M,G, or T")
-
 
 # Going for the biggest page size to avoid wasted bytes. InnoDB page size is
 # 16MB
@@ -125,10 +123,15 @@ else:
 with open(PASSFILE,'r') as rpw:
     root_pass = rpw.read()
 
-hookenv.log('Configuring %s. Set pass to %s' % (package, root_pass))
+if configs['flavor'] == 'mysql-5.6':
+    debconf_selection = "mysql-server"
+else:
+    debconf_selection = package
+
+hookenv.log('Configuring %s. Set pass to %s' % (debconf_selection, root_pass))
 dconf = Popen(['debconf-set-selections'], stdin=PIPE)
-dconf.stdin.write("%s %s/root_password password %s\n" % (package, package, root_pass))
-dconf.stdin.write("%s %s/root_password_again password %s\n" % (package, package, root_pass))
+dconf.stdin.write("%s %s/root_password password %s\n" % (debconf_selection, debconf_selection, root_pass))
+dconf.stdin.write("%s %s/root_password_again password %s\n" % (debconf_selection, debconf_selection, root_pass))
 dconf.communicate()
 dconf.wait()
 
