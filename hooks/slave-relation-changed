@@ -67,8 +67,7 @@ if [ -z "$serverid" ] ; then
   serverid=`echo $JUJU_UNIT_NAME | cut -d/ -f2`
 fi
 # add 100000 to server_id to avoid conflicts w/ masters
-# @todo remove if using unit name works well
-# serverid=$(($serverid+100000))
+serverid=$(($serverid+100000))
 juju-log "Server id is ${serverid}."
 if [ -f /etc/mysql/conf.d/slave.cf ] ; then
     old_hash=`md5sum /etc/mysql/conf.d/slave.cf`

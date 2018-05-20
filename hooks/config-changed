@@ -289,6 +289,7 @@ for target,content in targets.iteritems():
 if need_restart:
     try:
         check_call(['service', 'mysql', 'restart'])
+        # @see https://bugs.mysql.com/bug.php?id=11733
         check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e FLUSH TABLES WITH READ LOCK"])
         check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e SET GLOBAL read_only = %s" % configs["%s_read_only" % who_am_i]])
         check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e UNLOCK TABLES"])
