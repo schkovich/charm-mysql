@@ -10,18 +10,19 @@ import shutil
 import sys
 import platform
 import lib.utils as utils
+
 from string import upper
+from charmhelpers.core import hookenv
 from charmhelpers.fetch import (
     add_source,
     apt_update,
     apt_install
 )
-from charmhelpers.core.hookenv import relations_of_type, status_set
 from charmhelpers.core.host import mkdir, rsync
 from charmhelpers.core.templating import render
+from common import get_db_helper
 
-
-status_set('maintenance', 'Configuring MySQL')
+hookenv.status_set('maintenance', 'Configuring MySQL')
 
 # Add archive source if provided
 add_source(utils.config_get('source'), utils.config_get('key'))
@@ -63,7 +64,7 @@ else:
     SYS_MEM_LIMIT = human_to_bytes('4G')
 
 if IS_32BIT_SYSTEM:
-    check_call(['juju-log','-l','INFO','32bit system restrictions in play'])
+    hookenv.log('32bit system restrictions in play', hookenv.INFO)
 
 configs=json.loads(check_output(['config-get','--format=json']))
 
@@ -84,9 +85,7 @@ if configs['prefer-ipv6']:
 # from mariadb -> mysql fails badly, so it is disabled for now.
 valid_flavors = ['distro','percona', 'mysql-5.6']
 if configs['flavor'] not in valid_flavors:
-    check_call(['juju-log','-l',
-            'ERROR',
-            'Invalid flavor, must be one of %s' % ','.join(valid_flavors)])
+    hookenv.log('Invalid flavor, must be one of %s' % ','.join(valid_flavors), hookenv.ERROR)
     sys.exit(1)
 
 remove_pkgs=[]
@@ -111,8 +110,7 @@ for source in apt_sources:
     if os.path.exists('keys/%s' % server):
         check_call(['apt-key','add','keys/%s' % server])
     else:
-        check_call(['juju-log','-l','ERROR',
-                'No key for %s' % (server)])
+        hookenv.log('No key for %s' % server, hookenv.ERROR)
         sys.exit(1)
     check_call(['add-apt-repository','-y','deb http://%s %s main' % (source, series)])
     check_call(['apt-get','update'])
@@ -127,6 +125,7 @@ else:
 with open(PASSFILE,'r') as rpw:
     root_pass = rpw.read()
 
+hookenv.log('Configuring %s. Set pass to %s' % (package, root_pass))
 dconf = Popen(['debconf-set-selections'], stdin=PIPE)
 dconf.stdin.write("%s %s/root_password password %s\n" % (package, package, root_pass))
 dconf.stdin.write("%s %s/root_password_again password %s\n" % (package, package, root_pass))
@@ -144,7 +143,7 @@ if os.path.isfile(ROOT_PASSFILE):
 # smart-calc stuff in the configs
 dataset_bytes = human_to_bytes(configs['dataset-size'])
 
-check_call(['juju-log','-l','INFO','dataset size in bytes: %d' % dataset_bytes])
+hookenv.log('dataset size in bytes: %d' % dataset_bytes, hookenv.INFO)
 
 query_cache_size = configs.get('query-cache-size', 0)
 
@@ -291,9 +290,9 @@ if need_restart:
         check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e SET GLOBAL read_only = %s" % configs["%s_read_only" % who_am_i]])
         check_call(['mysql', "-uroot", "-p%s" % root_pass, "-e UNLOCK TABLES"])
     except CalledProcessError:
-        check_call(['juju-log', '-l', 'INFO', 'Restart failed, trying again'])
+        hookenv.log('Restart failed, trying again', hookenv.INFO)
         check_call(['service', 'mysql', 'restart'])
-if relations_of_type('nrpe-external-master'):
+if hookenv.relations_of_type('nrpe-external-master'):
     import nrpe_relations
     nrpe_relations.nrpe_relation()
 
@@ -310,4 +309,4 @@ else:
         if os.path.exists(path):
             os.unlink(path)
 
-status_set('active', 'Ready')
+hookenv.status_set('active', 'Ready')
